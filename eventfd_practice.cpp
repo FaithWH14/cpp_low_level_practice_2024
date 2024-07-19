@@ -12,38 +12,64 @@ Write your code in this editor and press "Run" button to compile and execute it.
 #include <mutex>
 #include <pthread.h>
 #include <sys/eventfd.h>
+#include <poll.h>
 
 class EventFd
 {
 public:
-    EventFd() {
-        // ignore error
-        exitSignal = eventfd(0, 0);
-        commandSignal = eventfd(0, 0);
-        int gg = eventfd(0, 0);
-
-        std::cout << "check this out: " << exitSignal << " " << commandSignal << " " << gg << std::endl;
-    }
-
-    ~EventFd() {
+    EventFd()
+    {
 
     }
 
-    void setEvent(int efd)
+    ~EventFd()
+    {
+
+    }
+
+    void createEvent(int& efd)
+    {
+        efd = eventfd(0, 0);
+    }
+
+    void setEvent(int& efd)
     {
         uint64_t value;
         write(efd, &value, sizeof(uint64_t));
     }
 
-    void resetEvent(int efd)
+    void resetEvent(int& efd)
     {
         uint64_t value;
         read(efd, &value, sizeof(uint64_t));
     }
 
+    bool waitEvent(int& efd)
+    {
+        struct pollfd pfd;
+        pfd.fd = efd;
+        pfd.events = POLLIN;
+
+        int timeout = 1000;
+        int ret = poll(&pfd, 1, timeout);
+        if (ret > 0)
+        {
+            if (pfd.revents & POLLIN)
+                return true;
+        }
+        else if (ret == 0)
+        {
+            return false;
+        }
+        else
+        {
+            std::cerr << "Poll failed" << std::endl;
+            return false;
+        }
+        return false;
+    }
+
 private:
-    int exitSignal;
-    int commandSignal;
     std::mutex mutex;
 };
 
@@ -86,7 +112,7 @@ private:
     pthread_t threadA;
 };
 
-RobotController robotController;
+// RobotController robotController;
 
 void mainThread(RobotController* robotController)
 {
@@ -101,9 +127,25 @@ void mainThread(RobotController* robotController)
 
 int main()
 {
-    // mainThread(&robotController);
-    // robotController.start();
-    // // mainThread();
-
     EventFd eventFd;
+    int exitSignal;
+    int commandSignal;
+
+    eventFd.createEvent(exitSignal);
+    eventFd.createEvent(commandSignal);
+    std::cout << "exit signal is: " << exitSignal << std::endl;
+    std::cout << "command signal is: " << commandSignal << std::endl;
+
+    eventFd.setEvent(commandSignal);
+    // eventFd.setEvent(exitSignal);
+    bool isPoll1 = eventFd.waitEvent(commandSignal);  // should be true
+    std::cout << "poll1 value is: " << isPoll1 << std::endl;
+
+    eventFd.resetEvent(commandSignal);
+    bool isPoll2 = eventFd.waitEvent(commandSignal);  // should be false
+    std::cout << "poll2 value is: " << isPoll2 << std::endl;
+
+    return 0;
+
+
 }
